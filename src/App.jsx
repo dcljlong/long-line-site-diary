@@ -1,5 +1,5 @@
 import BookTabs from "./components/BookTabs";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Binder from './components/Binder/Binder';
 import Dashboard from './components/Dashboard/Dashboard';
@@ -11,6 +11,7 @@ import Documents from './components/Tabs/Documents';
 import { useLocalStorage, exportData, importData } from './hooks/useLocalStorage';
 import { initialSites, initialTasks } from './data/initialData';
 import { Download, Upload, Menu } from 'lucide-react';
+import { saveSnapshot } from './utils/snapshot';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -19,21 +20,27 @@ function App() {
   const [tasks, setTasks] = useLocalStorage('ll-tasks', initialTasks);
   const [showMenu, setShowMenu] = useState(false);
 
+  const todayKey = new Date().toISOString().slice(0, 10);
+
   const handleNavigate = (tab, siteId = null) => {
     setActiveTab(tab);
     if (siteId) setSelectedSiteId(siteId);
   };
 
   const handleUpdateSite = (updatedSite) => {
-    setSites(sites.map(s => s.id === updatedSite.id ? updatedSite : s));
+    const updatedSites = sites.map(s => s.id === updatedSite.id ? updatedSite : s);
+    setSites(updatedSites);
+    saveSnapshot(todayKey, { sites: updatedSites, tasks });
   };
 
   const handleUpdateSites = (newSites) => {
     setSites(newSites);
+    saveSnapshot(todayKey, { sites: newSites, tasks });
   };
 
   const handleUpdateTasks = (newTasks) => {
     setTasks(newTasks);
+    saveSnapshot(todayKey, { sites, tasks: newTasks });
   };
 
   const handleExport = () => {
@@ -71,7 +78,7 @@ function App() {
       case 'tasks':
         return <Tasks tasks={tasks} sites={sites} onUpdateTasks={handleUpdateTasks} />;
       case 'docs':
-        return <Documents sites={sites} onUpdateSites={handleUpdateSites} />;
+        return <Documents sites={sites} onUpdateSites={handleUpdateSite} />;
       default:
         return <Dashboard sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
     }
