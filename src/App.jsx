@@ -1,3 +1,4 @@
+import BookTabs from "./components/BookTabs";
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Binder from './components/Binder/Binder';
@@ -49,7 +50,6 @@ function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
-
       case 'sites':
         if (selectedSiteId) {
           const site = sites.find(s => s.id === selectedSiteId);
@@ -64,19 +64,14 @@ function App() {
           }
         }
         return <Sites sites={sites} onUpdateSites={handleUpdateSites} onSelectSite={setSelectedSiteId} />;
-
       case 'diary':
         return <Sites sites={sites} onUpdateSites={handleUpdateSites} onSelectSite={setSelectedSiteId} />;
-
       case 'calendar':
         return <Calendar sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
-
       case 'tasks':
         return <Tasks tasks={tasks} sites={sites} onUpdateTasks={handleUpdateTasks} />;
-
       case 'docs':
         return <Documents sites={sites} onUpdateSites={handleUpdateSites} />;
-
       default:
         return <Dashboard sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
     }
@@ -147,6 +142,7 @@ function App() {
       {/* Main Content */}
       <div className="pt-14">
         <Binder activeTab={activeTab} onTabChange={setActiveTab}>
+          <BookTabs setActiveTab={setActiveTab} activeTab={activeTab} />
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab + selectedSiteId}
