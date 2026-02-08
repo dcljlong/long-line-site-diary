@@ -1,5 +1,7 @@
 # Long Line Site Diary
 
+_Last updated: February 8, 2026_
+
 A professional construction project management application designed as a digital ring binder. Built for interior fitout and construction project managers who need to track multiple sites, daily diaries, tasks, and documentation.
 
 ![Long Line Site Diary](screenshot.png)
