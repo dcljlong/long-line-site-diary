@@ -43,16 +43,64 @@ function titleFor(tab, selectedSiteId) {
   return "Long Line Site Diary";
 }
 
+function normalizeTask(t) {
+  const nowIso = new Date().toISOString();
+  const safe = t && typeof t === 'object' ? t : {};
+
+  const id = (safe.id || '').toString() || ('t' + Date.now());
+  const title = (safe.title || '').toString();
+
+  const jobId = (safe.jobId || safe.siteId || '').toString();
+
+  const hasStatus = !!safe.status;
+  const statusRaw = (safe.status || '').toString().toLowerCase();
+  const status =
+    statusRaw === 'planned' || statusRaw === 'active' || statusRaw === 'complete'
+      ? statusRaw
+      : (status ? 'complete' : 'active');
+
+  const startDate = safe.startDate ? safe.startDate : '';
+  const dueDate = safe.dueDate ? safe.dueDate : '';
+
+  const category = (safe.category || 'urgent').toString();
+  const priority = (safe.priority || 'medium').toString();
+
+  const scopeType = (safe.scopeType || 'other').toString();
+
+  const createdAt = (safe.createdAt || nowIso).toString();
+  const updatedAt = (safe.updatedAt || nowIso).toString();
+
+  return {
+    id,
+    jobId,
+    title,
+    category,
+    priority,
+    status,
+    startDate,
+    dueDate,
+    scopeType,
+    createdAt,
+    updatedAt
+  };
+}
+
+function normalizeTasks(list) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr.map(normalizeTask);
+}
 function App() {
   const [activeTab, setActiveTab] = useState(() => getHashTab());
   const [selectedSiteId, setSelectedSiteId] = useState(null);
   const [sites, setSites] = useLocalStorage("ll-sites", initialSites);
-  const [tasks, setTasks] = useLocalStorage("ll-tasks", initialTasks);
+  const [tasks, setTasks] = useLocalStorage("ll-tasks", normalizeTasks(initialTasks));
   const [showMenu, setShowMenu] = useState(false);
 
   const todayKey = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
+  const tasksNorm = useMemo(() => normalizeTasks(tasks), [tasks]);
+
+  useEffect(() =>  {
     const onHash = () => {
       const next = getHashTab();
       setActiveTab(next);
@@ -73,21 +121,22 @@ function App() {
   const handleUpdateSite = (updatedSite) => {
     const updatedSites = sites.map((s) => (s.id === updatedSite.id ? updatedSite : s));
     setSites(updatedSites);
-    saveSnapshot(todayKey, { sites: updatedSites, tasks });
+    saveSnapshot(todayKey, { sites: updatedSites, tasks: tasksNorm });
   };
 
   const handleUpdateSites = (newSites) => {
     setSites(newSites);
-    saveSnapshot(todayKey, { sites: newSites, tasks });
+    saveSnapshot(todayKey, { sites: newSites, tasks: tasksNorm });
   };
 
   const handleUpdateTasks = (newTasks) => {
-    setTasks(newTasks);
-    saveSnapshot(todayKey, { sites, tasks: newTasks });
+    const normalized = normalizeTasks(newTasks);
+    setTasks(normalized);
+    saveSnapshot(todayKey, { sites, tasks: normalized });
   };
 
   const handleExport = () => {
-    exportData({ sites, tasks }, "long-line-backup");
+    exportData({ sites, tasks: tasksNorm }, "long-line-backup");
   };
 
   const handleImport = (data) => {
@@ -112,7 +161,7 @@ function App() {
   const renderContent = () => {
     switch (activeTab) {
       case "dashboard":
-        return <Dashboard sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
+        return <Dashboard sites={sites} tasks={tasksNorm} onNavigate={handleNavigate} />;
 
       case "diary":
       case "projects":
@@ -145,10 +194,10 @@ function App() {
         );
 
       case "calendar":
-        return <Calendar sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
+        return <Calendar sites={sites} tasks={tasksNorm} onNavigate={handleNavigate} />;
 
       case "tasks":
-        return <Tasks tasks={tasks} sites={sites} onUpdateTasks={handleUpdateTasks} />;
+        return <Tasks tasks={tasksNorm} sites={sites} onUpdateTasks={handleUpdateTasks} />;
 
       case "docs":
         return <Documents sites={sites} onUpdateSites={handleUpdateSite} />;
@@ -166,7 +215,7 @@ function App() {
         );
 
       default:
-        return <Dashboard sites={sites} tasks={tasks} onNavigate={handleNavigate} />;
+        return <Dashboard sites={sites} tasks={tasksNorm} onNavigate={handleNavigate} />;
     }
   };
 
@@ -280,3 +329,10 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
+

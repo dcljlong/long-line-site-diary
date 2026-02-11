@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 
 const AddSiteModal = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({
+    const [form, setForm] = useState({
+    jobNumber: '',
     name: '',
-    address: '',
+    projectAddress: '',
+    mainContractor: '',
     contactPhone: '',
     contactEmail: '',
     status: 'active',
@@ -15,12 +17,19 @@ const AddSiteModal = ({ onClose, onSave }) => {
   };
 
   const handleSave = () => {
-    if (!form.name) {
+        if (!form.jobNumber || !String(form.jobNumber).trim()) {
+      alert('Job number is required');
+      return;
+    }
+    if (!form.name || !String(form.name).trim()) {
       alert('Site name is required');
       return;
     }
-    const newSite = {
+        const newSite = {
       ...form,
+      address: (form.projectAddress || '').trim(),
+      mainContractorName: (form.mainContractor || '').trim(),
+      mainContractorLogo: '',
       id: crypto.randomUUID(),
       milestones: [],
       budget: { total: 0, spent: 0, remaining: 0, categories: {} },
@@ -32,25 +41,38 @@ const AddSiteModal = ({ onClose, onSave }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-40">
       <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-        <h3 className="text-lg font-bold mb-3">Add New Site</h3>
+                <h3 className="text-lg font-bold mb-3">Add New Site</h3>
 
-        <label className="block text-sm font-medium">Name</label>
+        <label className="block text-sm font-medium">Job Number</label>
+        <input
+          name="jobNumber"
+          onChange={handleChange}
+          value={form.jobNumber}
+          className="w-full border rounded p-2 mb-3"
+        />
+
+        <label className="block text-sm font-medium">Main Contractor</label>
+        <input
+          name="mainContractor"
+          onChange={handleChange}
+          value={form.mainContractor}
+          className="w-full border rounded p-2 mb-3"
+        />
+
+        <label className="block text-sm font-medium">Project Address</label>
+        <input
+          name="projectAddress"
+          onChange={handleChange}
+          value={form.projectAddress}
+          className="w-full border rounded p-2 mb-3"
+        /><label className="block text-sm font-medium">Name</label>
         <input 
           name="name"
           onChange={handleChange}
           value={form.name}
           className="w-full border rounded p-2 mb-3"
         />
-
-        <label className="block text-sm font-medium">Address</label>
-        <input 
-          name="address"
-          onChange={handleChange}
-          value={form.address}
-          className="w-full border rounded p-2 mb-3"
-        />
-
-        <label className="block text-sm font-medium">Phone</label>
+<label className="block text-sm font-medium">Phone</label>
         <input 
           name="contactPhone"
           onChange={handleChange}
@@ -108,3 +130,4 @@ const AddSiteModal = ({ onClose, onSave }) => {
 };
 
 export default AddSiteModal;
+
