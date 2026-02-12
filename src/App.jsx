@@ -11,6 +11,9 @@ import { useLocalStorage, exportData, importData } from "./hooks/useLocalStorage
 import { initialSites, initialTasks } from "./data/initialData";
 import { Download, Upload, Menu, ArrowLeft } from "lucide-react";
 import { saveSnapshot } from "./utils/snapshot";
+import { preflightMigrateLocalStorage } from "./schema/migrate";
+
+preflightMigrateLocalStorage();
 
 function normalizeTab(input) {
   const t = (input || "").toString().toLowerCase().trim();
@@ -329,6 +332,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
