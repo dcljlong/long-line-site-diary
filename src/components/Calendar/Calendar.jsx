@@ -171,13 +171,32 @@ function taskTypeLabel(t) {
   return 'Task';
 }
 
+
+
+function buildMonthCells(monthDate) {
+  const ms = startOfMonth(monthDate);
+  const me = endOfMonth(ms);
+  const cs = startOfWeek(ms);
+  const ce = endOfWeek(me);
+
+  const out = [];
+  let d = cs;
+  while (d <= ce) {
+    out.push(d);
+    d = addDays(d, 1);
+  }
+
+  // Keep stable height (6 weeks) like main grid
+  while (out.length < 42) out.push(addDays(out[out.length - 1], 1));
+  return out.slice(0, 42);
+}
 const Calendar = ({ sites, tasks }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [snapshot, setSnapshot] = useState(null);
 
-  // View mode: month/day
-  const [viewMode, setViewMode] = useState('month'); // 'month' | 'day'
+  // View mode: month/week/day (fixed tabs)
+  const [viewMode, setViewMode] = useState('month'); // 'month' | 'week' | 'day'
 
   // Calendar items stored separately from tasks
   const [eventsRaw, setEventsRaw] = useLocalStorage('ll-events', []);
@@ -213,6 +232,7 @@ const Calendar = ({ sites, tasks }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // If URL has #calendar?date=YYYY-MM-DD, open Day view for that date
   useEffect(() => {
     const d = readHashDate();
     if (d) {
@@ -374,30 +394,29 @@ const Calendar = ({ sites, tasks }) => {
 
   const selectedDateItems = getItemsForDate(startOfDay(selectedDate));
 
-  const handleDateClick = (date) => {
+  const loadDaySnapshot = (date) => {
+    const key = format(date, 'yyyy-MM-dd');
+    const daySnapshot = loadSnapshot(key);
+    setSnapshot(daySnapshot);
+  };
+
+  const handleSelectDate = (date, { updateHashForDay = false } = {}) => {
     setSelectedDate(date);
     setCurrentMonth(date);
     setSnapshot(null);
     setShowAdd(false);
     setFormErr('');
 
-    setViewMode('day');
-    writeHashDate(date);
+    if (updateHashForDay) writeHashDate(date);
 
-    const key = format(date, 'yyyy-MM-dd');
-    const daySnapshot = loadSnapshot(key);
-    setSnapshot(daySnapshot);
+    loadDaySnapshot(date);
   };
 
-  const goPrevDay = () => {
-    const d = addDays(startOfDay(selectedDate), -1);
-    handleDateClick(d);
-  };
+  const goPrevDay = () => handleSelectDate(addDays(startOfDay(selectedDate), -1), { updateHashForDay: true });
+  const goNextDay = () => handleSelectDate(addDays(startOfDay(selectedDate), 1), { updateHashForDay: true });
 
-  const goNextDay = () => {
-    const d = addDays(startOfDay(selectedDate), 1);
-    handleDateClick(d);
-  };
+  const goPrevWeek = () => handleSelectDate(addDays(startOfDay(selectedDate), -7));
+  const goNextWeek = () => handleSelectDate(addDays(startOfDay(selectedDate), 7));
 
   const addEvent = () => {
     setFormErr('');
@@ -413,7 +432,6 @@ const Calendar = ({ sites, tasks }) => {
     const endTime = (form.endTime || '').toString().trim();
 
     if (!allDay) {
-      // Basic time validation
       const isTime = (t) => /^\d{2}:\d{2}$/.test(t);
       if (startTime && !isTime(startTime)) {
         setFormErr('Start time must be HH:mm.');
@@ -449,7 +467,6 @@ const Calendar = ({ sites, tasks }) => {
       return next;
     });
 
-    // Reset minimal fields for rapid entry
     setForm((p) => ({
       ...p,
       title: '',
@@ -459,106 +476,274 @@ const Calendar = ({ sites, tasks }) => {
     setShowAdd(false);
   };
 
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const Tabs = (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+      {[
+        { k: 'day', label: 'Day' },
+        { k: 'week', label: 'Week' },
+        { k: 'month', label: 'Month' },
+      ].map((t) => {
+        const active = viewMode === t.k;
+        return (
+          <button
+            key={t.k}
+            type="button"
+            onClick={() => {
+              setShowAdd(false);
+              setFormErr('');
 
-  const MonthHeader = (
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-xl md:text-2xl font-bold text-slate-800">Project Calendar</h2>
+              if (t.k === 'day') {
+                setViewMode('day');
+                writeHashDate(selectedDate);
+                loadDaySnapshot(selectedDate);
+                return;
+              }
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Previous month"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-
-        <h3 className="text-base md:text-lg font-semibold min-w-[160px] text-center">
-          {format(currentMonth, 'MMMM yyyy')}
-        </h3>
-
-        <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Next month"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setViewMode('day');
-            writeHashDate(selectedDate);
-          }}
-          className="ml-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
-          title="Switch to Day view"
-        >
-          Day view
-        </button>
-      </div>
+              setViewMode(t.k);
+              clearHashToCalendarRoot();
+            }}
+            className={[
+              'px-3 py-1.5 text-sm font-semibold rounded-md transition-colors',
+              active ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-100',
+            ].join(' ')}
+          >
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 
-  const DayHeader = (
+  const weekStart = startOfWeek(startOfDay(selectedDate));
+  const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+  const weekDayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const TopBar = (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-3">
-        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Day View</h2>
-        <div className="text-sm md:text-base font-semibold text-slate-700">
-          {format(selectedDate, 'EEEE, dd MMM yyyy')}
-        </div>
+        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Project Calendar</h2>
+        <div className="hidden md:block">{Tabs}</div>
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setShowAdd((v) => !v)}
-          className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 inline-flex items-center gap-2"
-          title="Add item"
-        >
-          {showAdd ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-          {showAdd ? 'Close' : 'Add Item'}
-        </button>
+        <div className="md:hidden">{Tabs}</div>
 
-        <button
-          type="button"
-          onClick={goPrevDay}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Previous day"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
+        {viewMode === 'month' && (
+          <>
+            <button
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Previous month"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
 
-        <button
-          type="button"
-          onClick={goNextDay}
-          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-          title="Next day"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
+            <div className="text-sm md:text-base font-semibold min-w-[150px] text-center text-slate-800">
+              {format(currentMonth, 'MMMM yyyy')}
+            </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setViewMode('month');
-            clearHashToCalendarRoot();
-          }}
-          className="ml-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
-          title="Back to Month view"
-        >
-          Month view
-        </button>
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Next month"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </>
+        )}
+
+        {viewMode === 'week' && (
+          <>
+            <button
+              type="button"
+              onClick={goPrevWeek}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Previous week"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <div className="text-sm md:text-base font-semibold min-w-[200px] text-center text-slate-800">
+              {format(weekStart, 'dd MMM')} – {format(addDays(weekStart, 6), 'dd MMM yyyy')}
+            </div>
+
+            <button
+              type="button"
+              onClick={goNextWeek}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Next week"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </>
+        )}
+
+        {viewMode === 'day' && (
+          <>
+            <button
+              type="button"
+              onClick={() => setShowAdd((v) => !v)}
+              className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 inline-flex items-center gap-2"
+              title="Add item"
+            >
+              {showAdd ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {showAdd ? 'Close' : 'Add Item'}
+            </button>
+
+            <button
+              type="button"
+              onClick={goPrevDay}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Previous day"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={goNextDay}
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Next day"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+
+            <div className="hidden md:block text-sm font-semibold text-slate-700 ml-2">
+              {format(selectedDate, 'EEEE, dd MMM yyyy')}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 
+  // MONTH GRID DATA
+  const monthGridDays = days;
+
+  // DAY VIEW
   if (viewMode === 'day') {
     return (
       <div className="h-[calc(100vh-220px)] flex flex-col">
-        {DayHeader}
+        {TopBar}
 
+{/* 5-month ribbon: -2, -1, 0 (selected), +1, +2 + mini prev/next months */}
+      <div className="mb-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const m = subMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4 text-slate-700" />
+          </button>
+
+          <div className="flex-1 overflow-x-auto">
+            <div className="flex items-center gap-2 min-w-max">
+              {[-2, -1, 0, 1, 2].map((offset) => {
+                const m = startOfMonth(addMonths(currentMonth, offset));
+                const isSel =
+                  m.getFullYear() === currentMonth.getFullYear() &&
+                  m.getMonth() === currentMonth.getMonth();
+
+                return (
+                  <button
+                    key={`${m.getFullYear()}-${m.getMonth()}`}
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className={[
+                      "px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap",
+                      isSel
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50",
+                    ].join(" ")}
+                    title={format(m, "MMMM yyyy")}
+                  >
+                    <div className="leading-tight">{format(m, "MMM")}</div>
+                    <div className={["text-[10px]", isSel ? "text-white/80" : "text-slate-500"].join(" ")}>
+                      {format(m, "yyyy")}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const m = addMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Next month"
+          >
+            <ChevronRight className="w-4 h-4 text-slate-700" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[subMonths(currentMonth, 1), addMonths(currentMonth, 1)].map((m) => {
+            const cells = buildMonthCells(m);
+            const mStart = startOfMonth(m);
+
+            return (
+              <div
+                key={`${m.getFullYear()}--mini`}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-3"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-semibold text-slate-700">{format(m, "MMMM yyyy")}</div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className="text-[11px] font-semibold text-slate-700 underline underline-offset-2"
+                    title="Jump to this month"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                    <div key={`${d}-209`} className="text-[10px] text-slate-500 text-center font-semibold">
+                      {d}
+                    </div>
+                  ))}
+
+                  {cells.map((d, i) => {
+                    const inMonth = isSameMonth(d, mStart);
+                    const isToday = isSameDay(d, new Date());
+
+                    return (
+                      <button
+                        key={`${d.toISOString()}-209`}
+                        type="button"
+                        onClick={() => {
+                          setViewMode("day");
+                          writeHashDate(startOfDay(d));
+                          handleSelectDate(startOfDay(d), { updateHashForDay: true });
+                        }}
+                        className={[
+                          "h-7 rounded-md text-[11px] font-semibold",
+                          inMonth ? "text-slate-700 hover:bg-slate-100" : "text-slate-300",
+                          isToday ? "ring-2 ring-blue-600" : "",
+                        ].join(" ")}
+                        title={format(d, "yyyy-MM-dd")}
+                      >
+                        {format(d, "d")}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
           {/* Day list + add form */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
@@ -712,7 +897,7 @@ const Calendar = ({ sites, tasks }) => {
             </div>
           </div>
 
-          {/* Right panel (snapshot + info) */}
+          {/* Right panel (snapshot) */}
           <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 min-h-0 overflow-auto">
             <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <CalendarIcon className="w-4 h-4" />
@@ -731,9 +916,264 @@ const Calendar = ({ sites, tasks }) => {
 
             <div className="mt-6 pt-4 border-t border-slate-200">
               <div className="text-sm font-semibold text-slate-700 mb-2">Next</div>
-              <div className="text-sm text-slate-600">
-                C2C adds edit/delete actions per item (still localStorage).
+              <div className="text-sm text-slate-600">C2C adds edit/delete actions per Event item.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // WEEK VIEW
+  if (viewMode === 'week') {
+    return (
+      <div className="h-[calc(100vh-220px)] flex flex-col">
+        {TopBar}
+
+{/* 5-month ribbon: -2, -1, 0 (selected), +1, +2 + mini prev/next months */}
+      <div className="mb-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const m = subMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4 text-slate-700" />
+          </button>
+
+          <div className="flex-1 overflow-x-auto">
+            <div className="flex items-center gap-2 min-w-max">
+              {[-2, -1, 0, 1, 2].map((offset) => {
+                const m = startOfMonth(addMonths(currentMonth, offset));
+                const isSel =
+                  m.getFullYear() === currentMonth.getFullYear() &&
+                  m.getMonth() === currentMonth.getMonth();
+
+                return (
+                  <button
+                    key={`${m.getFullYear()}-${m.getMonth()}`}
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className={[
+                      "px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap",
+                      isSel
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50",
+                    ].join(" ")}
+                    title={format(m, "MMMM yyyy")}
+                  >
+                    <div className="leading-tight">{format(m, "MMM")}</div>
+                    <div className={["text-[10px]", isSel ? "text-white/80" : "text-slate-500"].join(" ")}>
+                      {format(m, "yyyy")}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const m = addMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Next month"
+          >
+            <ChevronRight className="w-4 h-4 text-slate-700" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[subMonths(currentMonth, 1), addMonths(currentMonth, 1)].map((m) => {
+            const cells = buildMonthCells(m);
+            const mStart = startOfMonth(m);
+
+            return (
+              <div
+                key={`${m.getFullYear()}--mini`}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-3"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-semibold text-slate-700">{format(m, "MMMM yyyy")}</div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className="text-[11px] font-semibold text-slate-700 underline underline-offset-2"
+                    title="Jump to this month"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                    <div key={`${d}-209`} className="text-[10px] text-slate-500 text-center font-semibold">
+                      {d}
+                    </div>
+                  ))}
+
+                  {cells.map((d, i) => {
+                    const inMonth = isSameMonth(d, mStart);
+                    const isToday = isSameDay(d, new Date());
+
+                    return (
+                      <button
+                        key={`${d.toISOString()}-209`}
+                        type="button"
+                        onClick={() => {
+                          setViewMode("day");
+                          writeHashDate(startOfDay(d));
+                          handleSelectDate(startOfDay(d), { updateHashForDay: true });
+                        }}
+                        className={[
+                          "h-7 rounded-md text-[11px] font-semibold",
+                          inMonth ? "text-slate-700 hover:bg-slate-100" : "text-slate-300",
+                          isToday ? "ring-2 ring-blue-600" : "",
+                        ].join(" ")}
+                        title={format(d, "yyyy-MM-dd")}
+                      >
+                        {format(d, "d")}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            );
+          })}
+        </div>
+      </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+          {/* Week columns */}
+          <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
+            <div className="grid grid-cols-7 bg-slate-700 text-white shrink-0">
+              {weekDayLabels.map((d) => (
+                <div key={d} className="py-2 text-center text-xs md:text-sm font-semibold">{d}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 flex-1 min-h-0">
+              {weekDays.map((d) => {
+                const dateDay = startOfDay(d);
+                const items = getItemsForDate(dateDay);
+                const isSel = isSameDay(dateDay, selectedDate);
+                const isToday = isSameDay(dateDay, new Date());
+
+                return (
+                  <button
+                    key={dateDay.toISOString()}
+                    type="button"
+                    onClick={() => handleSelectDate(dateDay)}
+                    className={[
+                      'min-h-0 p-2 border border-slate-100 text-left',
+                      'transition-colors outline-none',
+                      isSel ? 'ring-2 ring-blue-600 ring-inset' : '',
+                      isToday && !isSel ? 'bg-blue-50' : 'bg-white',
+                      'hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <div className="text-xs font-semibold mb-1 flex items-center justify-between text-slate-700">
+                      <span className={isToday ? 'bg-blue-600 text-white w-6 h-6 rounded-full inline-flex items-center justify-center' : ''}>
+                        {format(dateDay, 'd')}
+                      </span>
+                      {items.length > 0 ? (
+                        <span className="text-[10px] text-slate-500 tabular-nums">{items.length}</span>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1 overflow-hidden">
+                      {items.slice(0, 2).map((item, eidx) => (
+                        <div
+                          key={`${item.type}_${item.eventId || item.title || eidx}`}
+                          className={[
+                            item.color,
+                            item.subtle ? 'opacity-60' : '',
+                            'text-white text-[10px] px-1 py-0.5 rounded truncate',
+                          ].join(' ')}
+                          title={`${item.kind}: ${item.title} (${item.site})`}
+                        >
+                          {item.type === 'deadline' ? 'Due: ' : item.type === 'task-start' ? 'Start: ' : item.type === 'event' ? 'Evt: ' : ''}
+                          {item.title}
+                        </div>
+                      ))}
+                      {items.length > 2 && (
+                        <div className="text-[10px] text-slate-500 text-center">+{items.length - 2} more</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Selected day details */}
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 min-h-0 overflow-auto">
+            <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4" />
+              {format(selectedDate, 'EEEE, MMMM do')}
+            </h3>
+
+            {selectedDateItems.length === 0 && !snapshot ? (
+              <p className="text-slate-400 text-center py-8">No items or snapshot for this date</p>
+            ) : (
+              <>
+                {selectedDateItems.length > 0 && (
+                  <div className="space-y-3">
+                    {selectedDateItems.map((item, idx) => (
+                      <motion.div
+                        key={`${item.type}_${item.eventId || item.title || idx}`}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.03 }}
+                        className="p-3 rounded-xl border border-slate-200 bg-slate-50"
+                      >
+                        <div className={`inline-block px-2 py-0.5 rounded text-[10px] text-white ${item.color} mb-1`}>
+                          {item.kind}
+                        </div>
+                        <h4 className="font-semibold text-sm text-slate-800">{item.title}</h4>
+                        <p className="text-xs text-slate-600 flex items-center gap-1 mt-1">
+                          <MapPin className="w-3 h-3" />
+                          {item.site}
+                          {item.meta ? <span className="text-slate-500">• {item.meta}</span> : null}
+                        </p>
+                        {item.location ? <p className="text-xs text-slate-500 mt-1">Location: {item.location}</p> : null}
+                        {item.status ? <p className="text-xs text-slate-500 mt-1 capitalize">Status: {item.status}</p> : null}
+                        {item.notes ? <p className="text-xs text-slate-600 mt-2 whitespace-pre-wrap">{item.notes}</p> : null}
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+
+                {snapshot && (
+                  <div className="mt-4">
+                    <DailySnapshotView
+                      date={format(selectedDate, 'yyyy-MM-dd')}
+                      snapshot={snapshot}
+                      onClose={() => setSnapshot(null)}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('day');
+                  writeHashDate(selectedDate);
+                  loadDaySnapshot(selectedDate);
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
+                title="Open full Day view"
+              >
+                Open Day View
+              </button>
             </div>
           </div>
         </div>
@@ -744,19 +1184,137 @@ const Calendar = ({ sites, tasks }) => {
   // MONTH VIEW
   return (
     <div className="h-[calc(100vh-220px)] flex flex-col">
-      {MonthHeader}
+      {TopBar}
 
+{/* 5-month ribbon: -2, -1, 0 (selected), +1, +2 + mini prev/next months */}
+      <div className="mb-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const m = subMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Previous month"
+          >
+            <ChevronLeft className="w-4 h-4 text-slate-700" />
+          </button>
+
+          <div className="flex-1 overflow-x-auto">
+            <div className="flex items-center gap-2 min-w-max">
+              {[-2, -1, 0, 1, 2].map((offset) => {
+                const m = startOfMonth(addMonths(currentMonth, offset));
+                const isSel =
+                  m.getFullYear() === currentMonth.getFullYear() &&
+                  m.getMonth() === currentMonth.getMonth();
+
+                return (
+                  <button
+                    key={`${m.getFullYear()}-${m.getMonth()}`}
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className={[
+                      "px-3 py-2 rounded-lg border text-xs font-semibold whitespace-nowrap",
+                      isSel
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50",
+                    ].join(" ")}
+                    title={format(m, "MMMM yyyy")}
+                  >
+                    <div className="leading-tight">{format(m, "MMM")}</div>
+                    <div className={["text-[10px]", isSel ? "text-white/80" : "text-slate-500"].join(" ")}>
+                      {format(m, "yyyy")}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const m = addMonths(currentMonth, 1);
+              setCurrentMonth(m);
+            }}
+            className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50"
+            title="Next month"
+          >
+            <ChevronRight className="w-4 h-4 text-slate-700" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[subMonths(currentMonth, 1), addMonths(currentMonth, 1)].map((m) => {
+            const cells = buildMonthCells(m);
+            const mStart = startOfMonth(m);
+
+            return (
+              <div
+                key={`${m.getFullYear()}--mini`}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm p-3"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-semibold text-slate-700">{format(m, "MMMM yyyy")}</div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentMonth(m)}
+                    className="text-[11px] font-semibold text-slate-700 underline underline-offset-2"
+                    title="Jump to this month"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                    <div key={`${d}-209`} className="text-[10px] text-slate-500 text-center font-semibold">
+                      {d}
+                    </div>
+                  ))}
+
+                  {cells.map((d, i) => {
+                    const inMonth = isSameMonth(d, mStart);
+                    const isToday = isSameDay(d, new Date());
+
+                    return (
+                      <button
+                        key={`${d.toISOString()}-209`}
+                        type="button"
+                        onClick={() => {
+                          setViewMode("day");
+                          writeHashDate(startOfDay(d));
+                          handleSelectDate(startOfDay(d), { updateHashForDay: true });
+                        }}
+                        className={[
+                          "h-7 rounded-md text-[11px] font-semibold",
+                          inMonth ? "text-slate-700 hover:bg-slate-100" : "text-slate-300",
+                          isToday ? "ring-2 ring-blue-600" : "",
+                        ].join(" ")}
+                        title={format(d, "yyyy-MM-dd")}
+                      >
+                        {format(d, "d")}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
         {/* Calendar Grid */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
           <div className="grid grid-cols-7 bg-slate-700 text-white shrink-0">
-            {weekDays.map(d => (
+            {weekDayLabels.map(d => (
               <div key={d} className="py-2 text-center text-xs md:text-sm font-semibold">{d}</div>
             ))}
           </div>
 
           <div className="grid grid-cols-7 flex-1 min-h-0">
-            {days.map((date, idx) => {
+            {monthGridDays.map((date, idx) => {
               const dateDay = startOfDay(date);
               const items = getItemsForDate(dateDay);
               const isCurrent = isSameMonth(dateDay, currentMonth);
@@ -767,7 +1325,11 @@ const Calendar = ({ sites, tasks }) => {
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => handleDateClick(dateDay)}
+                  onClick={() => {
+                    setViewMode('day');
+                    writeHashDate(dateDay);
+                    handleSelectDate(dateDay, { updateHashForDay: true });
+                  }}
                   className={[
                     'min-h-0 p-2 border border-slate-100 text-left',
                     'transition-colors outline-none',
@@ -842,7 +1404,7 @@ const Calendar = ({ sites, tasks }) => {
                       key={`${item.type}_${item.eventId || item.title || idx}`}
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.04 }}
+                      transition={{ delay: idx * 0.03 }}
                       className="p-3 rounded-xl border border-slate-200 bg-slate-50"
                     >
                       <div className={`inline-block px-2 py-0.5 rounded text-[10px] text-white ${item.color} mb-1`}>
@@ -890,3 +1452,16 @@ const Calendar = ({ sites, tasks }) => {
 };
 
 export default Calendar;
+
+
+
+
+
+
+
+
+
+
+
+
+

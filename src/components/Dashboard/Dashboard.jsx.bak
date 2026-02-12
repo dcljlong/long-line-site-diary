@@ -335,8 +335,8 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
                 </div>
 
                 <div className="grid grid-cols-7 gap-1 text-center">
-                  {["M", "T", "W", "T", "F", "S", "S"].map((x, i) => (
-                    <div key={`${x}-${i}`} className="text-[11px] font-semibold text-slate-600 py-1">
+                  {["M", "T", "W", "T", "F", "S", "S"].map((x) => (
+                    <div key={x} className="text-[11px] font-semibold text-slate-600 py-1">
                       {x}
                     </div>
                   ))}
@@ -552,4 +552,3 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 };
 
 export default Dashboard;
-
