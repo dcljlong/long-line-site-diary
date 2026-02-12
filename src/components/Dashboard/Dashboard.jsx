@@ -208,8 +208,8 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 
   const progress = useMemo(() => {
     return (sites || []).slice(0, 5).map((s, idx) => {
-      const siteTasks = (tasks || []).filter((t) => ((t.jobId || t.siteId || t.site || t.site_id) === s.id));
-      const done = siteTasks.filter((t) => ((t.status || '').toString().toLowerCase() === 'complete') || (t.done || false || t.isDone)).length;
+      const siteTasks = (tasks || []).filter((t) => (t.jobId === s.id));
+      const done = siteTasks.filter((t) => ((t.status || '').toString().toLowerCase() === 'complete') ).length;
       const total = siteTasks.length || 0;
       const pct = total ? Math.round((done / total) * 100) : Math.max(35, 72 - idx * 7);
       return { id: s.id, name: s.name || "Site", pct };
@@ -524,5 +524,6 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 };
 
 export default Dashboard;
+
 
 
