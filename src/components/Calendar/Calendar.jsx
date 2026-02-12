@@ -1,6 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Clock } from 'lucide-react';
 import {
   format,
   startOfMonth,
@@ -43,7 +43,6 @@ function safeDate(value) {
   if (!value) return null;
   const v = String(value).trim();
   if (!v) return null;
-  // Prefer parseISO for YYYY-MM-DD so it stays stable in local time
   const d = parseISO(v);
   if (isNaN(d.getTime())) return null;
   return startOfDay(d);
@@ -66,10 +65,13 @@ function writeHashDate(date) {
   window.location.hash = `calendar?date=${ymd}`;
 }
 
+function clearHashToCalendarRoot() {
+  window.location.hash = 'calendar';
+}
+
 function taskStatus(t) {
   const st = (t?.status || '').toString().toLowerCase();
   if (st === 'planned' || st === 'active' || st === 'complete') return st;
-  // backward compat fallbacks
   if (t?.done || t?.isDone) return 'complete';
   return 'active';
 }
@@ -128,11 +130,16 @@ const Calendar = ({ sites, tasks }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [snapshot, setSnapshot] = useState(null);
 
+  // NEW: view mode
+  const [viewMode, setViewMode] = useState('month'); // 'month' | 'day'
+
   useEffect(() => {
     const d = readHashDate();
     if (d) {
       setSelectedDate(d);
       setCurrentMonth(d);
+      setViewMode('day');
+
       const key = format(d, 'yyyy-MM-dd');
       const daySnapshot = loadSnapshot(key);
       setSnapshot(daySnapshot);
@@ -172,7 +179,7 @@ const Calendar = ({ sites, tasks }) => {
   const getEventsForDate = (date) => {
     const events = [];
 
-    // Site milestones (existing)
+    // Site milestones
     (sites || []).forEach(site => {
       (site.milestones || []).forEach(milestone => {
         const md = safeDate(milestone?.date);
@@ -194,14 +201,13 @@ const Calendar = ({ sites, tasks }) => {
       });
     });
 
-    // Tasks -> Calendar (single source of truth)
+    // Tasks
     (tasks || []).forEach((task) => {
       const st = taskStatus(task);
       const jobId = task?.jobId || task?.siteId || '';
       const jobName = jobId ? (siteNameById.get(jobId) || 'Job') : 'General';
       const jobColor = jobId ? (siteColorById.get(jobId) || 'bg-slate-600') : 'bg-slate-600';
 
-      // 1) Start marker
       const sd = safeDate(task?.startDate);
       if (sd && isSameDay(sd, date)) {
         events.push({
@@ -214,7 +220,6 @@ const Calendar = ({ sites, tasks }) => {
         });
       }
 
-      // 2) Due/deadline marker
       const dd = safeDate(task?.dueDate);
       if (dd && isSameDay(dd, date)) {
         events.push({
@@ -228,7 +233,6 @@ const Calendar = ({ sites, tasks }) => {
         });
       }
 
-      // 3) Duration block (span) if start + (endDate|durationDays)
       const span = taskSpan(task);
       if (span && isWithinInterval(date, { start: span.start, end: span.end })) {
         const isStart = isSameDay(span.start, date);
@@ -260,7 +264,11 @@ const Calendar = ({ sites, tasks }) => {
 
   const handleDateClick = (date) => {
     setSelectedDate(date);
+    setCurrentMonth(date);
     setSnapshot(null);
+
+    // Selecting a day should be "day mode" in practice (Outlook-like)
+    setViewMode('day');
     writeHashDate(date);
 
     const key = format(date, 'yyyy-MM-dd');
@@ -268,38 +276,180 @@ const Calendar = ({ sites, tasks }) => {
     setSnapshot(daySnapshot);
   };
 
+  const goPrevDay = () => {
+    const d = addDays(startOfDay(selectedDate), -1);
+    handleDateClick(d);
+  };
+
+  const goNextDay = () => {
+    const d = addDays(startOfDay(selectedDate), 1);
+    handleDateClick(d);
+  };
+
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  return (
-    <div className="h-[calc(100vh-220px)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Project Calendar</h2>
+  const MonthHeader = (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-xl md:text-2xl font-bold text-slate-800">Project Calendar</h2>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Previous month"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Previous month"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
 
-          <h3 className="text-base md:text-lg font-semibold min-w-[160px] text-center">
-            {format(currentMonth, 'MMMM yyyy')}
-          </h3>
+        <h3 className="text-base md:text-lg font-semibold min-w-[160px] text-center">
+          {format(currentMonth, 'MMMM yyyy')}
+        </h3>
 
-          <button
-            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Next month"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+        <button
+          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Next month"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('day');
+            writeHashDate(selectedDate);
+          }}
+          className="ml-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
+          title="Switch to Day view"
+        >
+          Day view
+        </button>
+      </div>
+    </div>
+  );
+
+  const DayHeader = (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <h2 className="text-xl md:text-2xl font-bold text-slate-800">Day View</h2>
+        <div className="text-sm md:text-base font-semibold text-slate-700">
+          {format(selectedDate, 'EEEE, dd MMM yyyy')}
         </div>
       </div>
 
-      {/* Body */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={goPrevDay}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Previous day"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={goNextDay}
+          className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          title="Next day"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setViewMode('month');
+            clearHashToCalendarRoot();
+          }}
+          className="ml-2 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold hover:bg-slate-700"
+          title="Back to Month view"
+        >
+          Month view
+        </button>
+      </div>
+    </div>
+  );
+
+  if (viewMode === 'day') {
+    return (
+      <div className="h-[calc(100vh-220px)] flex flex-col">
+        {DayHeader}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+          {/* Day timeline placeholder (Outlook-like frame) */}
+          <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
+            <div className="bg-slate-700 text-white px-4 py-3 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2 font-semibold">
+                <Clock className="w-4 h-4" />
+                Schedule
+              </div>
+              <div className="text-xs text-white/80">Events/tasks will render here (next step adds event CRUD)</div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 space-y-3">
+              {selectedDateEvents.length === 0 ? (
+                <div className="text-sm text-slate-600">No items scheduled for this day.</div>
+              ) : (
+                selectedDateEvents.map((event, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-start gap-3"
+                  >
+                    <div className={`w-3 h-3 rounded mt-1 ${event.color}`} />
+                    <div className="min-w-0">
+                      <div className="text-xs text-slate-600">{event.kind}</div>
+                      <div className="text-sm font-semibold text-slate-800 truncate">{event.title}</div>
+                      <div className="text-xs text-slate-600 flex items-center gap-1 mt-1">
+                        <MapPin className="w-3 h-3" />
+                        {event.site}
+                      </div>
+                      {event.status ? (
+                        <div className="text-xs text-slate-500 mt-1 capitalize">Status: {event.status}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Right panel (snapshot + details) */}
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 min-h-0 overflow-auto">
+            <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <CalendarIcon className="w-4 h-4" />
+              Day Details
+            </h3>
+
+            {snapshot ? (
+              <DailySnapshotView
+                date={format(selectedDate, 'yyyy-MM-dd')}
+                snapshot={snapshot}
+                onClose={() => setSnapshot(null)}
+              />
+            ) : (
+              <div className="text-sm text-slate-600">
+                No snapshot saved for this date.
+              </div>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-slate-200">
+              <div className="text-sm font-semibold text-slate-700 mb-2">Next calendar step</div>
+              <div className="text-sm text-slate-600">
+                Add Outlook-style calendar items (title/start/end/all-day/location/notes) stored under <code>ll-events</code>.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // MONTH VIEW (existing layout)
+  return (
+    <div className="h-[calc(100vh-220px)] flex flex-col">
+      {MonthHeader}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
         {/* Calendar Grid */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
