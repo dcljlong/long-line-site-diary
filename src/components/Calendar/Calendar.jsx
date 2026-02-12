@@ -59,19 +59,42 @@ function taskStatus(t) {
 
 function taskSpan(t) {
   const safe = t && typeof t === 'object' ? t : {};
-  const start = safe.startDate || safe.start || safe.start_at || null;
-  const due = safe.dueDate || safe.due || safe.date || safe.deadline || null;
 
-  const s = start ? new Date(start) : null;
-  const d = due ? new Date(due) : null;
+  const startRaw =
+    safe.startDate ?? safe.start ?? safe.start_at ?? safe.start_date ?? null;
 
-  const startOk = !!(s && !isNaN(s.getTime()));
-  const dueOk = !!(d && !isNaN(d.getTime()));
+  const endRaw =
+    safe.endDate ?? safe.end ?? safe.end_at ?? safe.end_date ?? null;
 
-  return {
-    start: startOk ? s : null,
-    due: dueOk ? d : null,
-  };
+  const durRaw = safe.durationDays ?? safe.duration ?? safe.days ?? null;
+
+  const start = startRaw ? new Date(startRaw) : null;
+  if (!start || isNaN(start.getTime())) return null;
+
+  let end = null;
+
+  if (endRaw) {
+    const e = new Date(endRaw);
+    if (!isNaN(e.getTime())) end = e;
+  }
+
+  if (!end && durRaw != null) {
+    const dur = Number(durRaw);
+    if (isFinite(dur) && dur > 0) {
+      end = addDays(start, Math.max(0, Math.round(dur) - 1));
+    }
+  }
+
+  if (!end) {
+    const dueRaw =
+      safe.dueDate ?? safe.due ?? safe.date ?? safe.deadline ?? null;
+    const d = dueRaw ? new Date(dueRaw) : null;
+    if (d && !isNaN(d.getTime())) end = d;
+  }
+
+  if (!end || isNaN(end.getTime())) end = start;
+
+  return { start, end };
 }
 
 function taskTypeLabel(t) {
@@ -394,6 +417,7 @@ const Calendar = ({ sites, tasks }) => {
 };
 
 export default Calendar;
+
 
 
 
