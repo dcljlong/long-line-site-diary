@@ -7,6 +7,14 @@ const startOfDay = (d) => {
   return x;
 };
 
+const ymdLocal = (d) => {
+  const x = startOfDay(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 const fmtShort = (d) =>
   new Date(d).toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "numeric" });
 
@@ -121,8 +129,8 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
         else pr = "Normal";
       }
 
-      const st = (x.status || '').toString().toLowerCase();
-      const isDone = (st === 'complete') || !!(x.done || false || x.isDone);
+      const st = (x.status || "").toString().toLowerCase();
+      const isDone = st === "complete" || !!(x.done || false || x.isDone);
       const isOverdue = !isDone && dueDate && startOfDay(dueDate) < today;
 
       return { ...x, dueDate, pr, isDone, isOverdue };
@@ -208,8 +216,8 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 
   const progress = useMemo(() => {
     return (sites || []).slice(0, 5).map((s, idx) => {
-      const siteTasks = (tasks || []).filter((t) => (t.jobId === s.id));
-      const done = siteTasks.filter((t) => ((t.status || '').toString().toLowerCase() === 'complete') ).length;
+      const siteTasks = (tasks || []).filter((t) => t.jobId === s.id);
+      const done = siteTasks.filter((t) => ((t.status || "").toString().toLowerCase() === "complete")).length;
       const total = siteTasks.length || 0;
       const pct = total ? Math.round((done / total) * 100) : Math.max(35, 72 - idx * 7);
       return { id: s.id, name: s.name || "Site", pct };
@@ -228,6 +236,11 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 
   const goTasks = () => onNavigate && onNavigate("tasks");
   const goSites = () => onNavigate && onNavigate("diary");
+
+  const goCalendarDate = (d) => {
+    const key = ymdLocal(d);
+    window.location.hash = `calendar?date=${key}`;
+  };
 
   const calendarRight = <Segmented value={calMode} onChange={setCalMode} />;
 
@@ -273,7 +286,17 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
               <>
                 <div className="grid grid-cols-7 gap-2 text-center">
                   {derived.week.map(({ d, count }) => (
-                    <div key={d.toISOString()} className="space-y-2">
+                    <button
+                      key={d.toISOString()}
+                      type="button"
+                      onClick={() => goCalendarDate(d)}
+                      className={[
+                        "space-y-2 rounded-xl border border-slate-200 bg-white px-2 py-2",
+                        "hover:bg-slate-50 transition-colors",
+                        "focus:outline-none focus:ring-2 focus:ring-blue-600",
+                      ].join(" ")}
+                      title={`Open calendar: ${ymdLocal(d)}`}
+                    >
                       <div className="text-[11px] text-slate-600">
                         {d.toLocaleDateString("en-NZ", { weekday: "narrow" })}
                       </div>
@@ -285,7 +308,7 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
                           <span className="w-2 h-2 rounded-full bg-slate-200 inline-block" />
                         )}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
 
@@ -323,13 +346,18 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
                     const isT = isSameDay(d, today);
 
                     return (
-                      <div
+                      <button
                         key={d.toISOString()}
+                        type="button"
+                        onClick={() => goCalendarDate(d)}
                         className={[
-                          "rounded-lg border border-slate-200 bg-white px-1 py-1 min-h-[38px]",
+                          "rounded-lg border border-slate-200 bg-white px-1 py-1 min-h-[38px] text-left",
+                          "hover:bg-slate-50 transition-colors",
                           inMonth ? "" : "opacity-40",
                           isT ? "ring-2 ring-blue-600" : "",
+                          "focus:outline-none focus:ring-2 focus:ring-blue-600",
                         ].join(" ")}
+                        title={`Open calendar: ${ymdLocal(d)}`}
                       >
                         <div className="text-[11px] font-semibold text-slate-700">{d.getDate()}</div>
                         <div className="mt-1 flex items-center justify-center gap-1">
@@ -342,7 +370,7 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
                             <span className="w-1.5 h-1.5 rounded-full bg-slate-200 inline-block" />
                           )}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -524,6 +552,3 @@ const Dashboard = ({ sites = [], tasks = [], onNavigate }) => {
 };
 
 export default Dashboard;
-
-
-

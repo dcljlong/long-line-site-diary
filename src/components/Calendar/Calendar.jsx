@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin } from 'lucide-react';
 import {
@@ -47,6 +47,23 @@ function safeDate(value) {
   const d = parseISO(v);
   if (isNaN(d.getTime())) return null;
   return startOfDay(d);
+}
+
+function readHashDate() {
+  const raw = (window.location.hash || '').replace('#', '');
+  const parts = raw.split('?');
+  if (parts.length < 2) return null;
+
+  const qs = parts.slice(1).join('?');
+  const params = new URLSearchParams(qs);
+  const dateStr = params.get('date');
+  return safeDate(dateStr);
+}
+
+function writeHashDate(date) {
+  const d = startOfDay(date);
+  const ymd = format(d, 'yyyy-MM-dd');
+  window.location.hash = `calendar?date=${ymd}`;
 }
 
 function taskStatus(t) {
@@ -110,6 +127,17 @@ const Calendar = ({ sites, tasks }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [snapshot, setSnapshot] = useState(null);
+
+  useEffect(() => {
+    const d = readHashDate();
+    if (d) {
+      setSelectedDate(d);
+      setCurrentMonth(d);
+      const key = format(d, 'yyyy-MM-dd');
+      const daySnapshot = loadSnapshot(key);
+      setSnapshot(daySnapshot);
+    }
+  }, []);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(monthStart);
@@ -203,8 +231,6 @@ const Calendar = ({ sites, tasks }) => {
       // 3) Duration block (span) if start + (endDate|durationDays)
       const span = taskSpan(task);
       if (span && isWithinInterval(date, { start: span.start, end: span.end })) {
-        // avoid duplicating the exact same day markers too heavily:
-        // show the span marker, but keep it visually subtle on non-start days
         const isStart = isSameDay(span.start, date);
         const isEnd = isSameDay(span.end, date);
 
@@ -221,7 +247,6 @@ const Calendar = ({ sites, tasks }) => {
       }
     });
 
-    // Stable ordering: milestone, start, span, deadline
     const rank = (t) =>
       t.type === 'milestone' ? 0 :
       t.type === 'task-start' ? 1 :
@@ -235,7 +260,10 @@ const Calendar = ({ sites, tasks }) => {
 
   const handleDateClick = (date) => {
     setSelectedDate(date);
-    const key = date.toISOString().slice(0, 10);
+    setSnapshot(null);
+    writeHashDate(date);
+
+    const key = format(date, 'yyyy-MM-dd');
     const daySnapshot = loadSnapshot(key);
     setSnapshot(daySnapshot);
   };
@@ -417,7 +445,3 @@ const Calendar = ({ sites, tasks }) => {
 };
 
 export default Calendar;
-
-
-
-

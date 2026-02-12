@@ -17,7 +17,8 @@ import { downloadBackupFile, importAppData } from "./utils/backup";
 preflightMigrateLocalStorage();
 
 function normalizeTab(input) {
-  const t = (input || "").toString().toLowerCase().trim();
+  const raw = (input || "").toString().toLowerCase().trim();
+  const t = raw.split("?")[0]; // allow #calendar?date=YYYY-MM-DD
   if (!t) return "dashboard";
   if (t === "documents") return "docs";
   return t;
@@ -29,7 +30,7 @@ function getHashTab() {
 
 function setHashTab(tab) {
   const key = normalizeTab(tab);
-  if ((window.location.hash || "").replace("#", "") !== key) {
+  if ((window.location.hash || "").replace("#", "").split("?")[0] !== key) {
     window.location.hash = key;
   }
 }
