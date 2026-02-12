@@ -1,6 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Clock, Plus, X } from 'lucide-react';
 import {
   format,
   startOfMonth,
@@ -70,10 +70,18 @@ function clearHashToCalendarRoot() {
   window.location.hash = 'calendar';
 }
 
+function newId(prefix = 'ev') {
+  try {
+    const u = globalThis.crypto?.randomUUID?.();
+    if (u) return u;
+  } catch {}
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 function normalizeEvent(e) {
   const nowIso = new Date().toISOString();
   const safe = e && typeof e === 'object' ? e : {};
-  const id = (safe.id || '').toString() || (globalThis.crypto?.randomUUID?.() || `ev_${Date.now()}`);
+  const id = (safe.id || '').toString() || newId('ev');
   const title = (safe.title || '').toString().trim() || 'Calendar Item';
   const date = (safe.date || '').toString().trim(); // YYYY-MM-DD required
   const allDay = !!safe.allDay;
@@ -171,9 +179,30 @@ const Calendar = ({ sites, tasks }) => {
   // View mode: month/day
   const [viewMode, setViewMode] = useState('month'); // 'month' | 'day'
 
-  // NEW: Calendar items (Outlook-like) stored separately from tasks
+  // Calendar items stored separately from tasks
   const [eventsRaw, setEventsRaw] = useLocalStorage('ll-events', []);
   const events = useMemo(() => normalizeEvents(eventsRaw), [eventsRaw]);
+
+  // Day create form
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({
+    title: '',
+    allDay: false,
+    startTime: '09:00',
+    endTime: '10:00',
+    location: '',
+    notes: '',
+    jobId: '',
+  });
+  const [formErr, setFormErr] = useState('');
+
+  const selectedYmd = useMemo(() => format(startOfDay(selectedDate), 'yyyy-MM-dd'), [selectedDate]);
+
+  const siteOptions = useMemo(() => {
+    return (sites || [])
+      .filter((s) => s && s.id)
+      .map((s) => ({ id: s.id, name: s.name || 'Site', address: s.address || '' }));
+  }, [sites]);
 
   // Keep storage normalized (idempotent)
   useEffect(() => {
@@ -349,6 +378,8 @@ const Calendar = ({ sites, tasks }) => {
     setSelectedDate(date);
     setCurrentMonth(date);
     setSnapshot(null);
+    setShowAdd(false);
+    setFormErr('');
 
     setViewMode('day');
     writeHashDate(date);
@@ -366,6 +397,66 @@ const Calendar = ({ sites, tasks }) => {
   const goNextDay = () => {
     const d = addDays(startOfDay(selectedDate), 1);
     handleDateClick(d);
+  };
+
+  const addEvent = () => {
+    setFormErr('');
+
+    const title = (form.title || '').toString().trim();
+    if (!title) {
+      setFormErr('Title is required.');
+      return;
+    }
+
+    const allDay = !!form.allDay;
+    const startTime = (form.startTime || '').toString().trim();
+    const endTime = (form.endTime || '').toString().trim();
+
+    if (!allDay) {
+      // Basic time validation
+      const isTime = (t) => /^\d{2}:\d{2}$/.test(t);
+      if (startTime && !isTime(startTime)) {
+        setFormErr('Start time must be HH:mm.');
+        return;
+      }
+      if (endTime && !isTime(endTime)) {
+        setFormErr('End time must be HH:mm.');
+        return;
+      }
+      if (startTime && endTime && startTime > endTime) {
+        setFormErr('End time must be after start time.');
+        return;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const ev = normalizeEvent({
+      id: newId('ev'),
+      title,
+      date: selectedYmd,
+      allDay,
+      startTime: allDay ? '' : startTime,
+      endTime: allDay ? '' : endTime,
+      location: (form.location || '').toString().trim(),
+      notes: (form.notes || '').toString().trim(),
+      jobId: (form.jobId || '').toString().trim(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    setEventsRaw((prev) => {
+      const next = normalizeEvents([...(Array.isArray(prev) ? prev : []), ev]);
+      return next;
+    });
+
+    // Reset minimal fields for rapid entry
+    setForm((p) => ({
+      ...p,
+      title: '',
+      location: '',
+      notes: '',
+    }));
+    setShowAdd(false);
   };
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -422,6 +513,16 @@ const Calendar = ({ sites, tasks }) => {
       <div className="flex items-center gap-2">
         <button
           type="button"
+          onClick={() => setShowAdd((v) => !v)}
+          className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 inline-flex items-center gap-2"
+          title="Add item"
+        >
+          {showAdd ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          {showAdd ? 'Close' : 'Add Item'}
+        </button>
+
+        <button
+          type="button"
           onClick={goPrevDay}
           className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
           title="Previous day"
@@ -459,15 +560,119 @@ const Calendar = ({ sites, tasks }) => {
         {DayHeader}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-          {/* Day list (Phase C2A: list only; Phase C2B adds create/edit UI) */}
+          {/* Day list + add form */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden flex flex-col min-h-0">
             <div className="bg-slate-700 text-white px-4 py-3 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 font-semibold">
                 <Clock className="w-4 h-4" />
-                Items
+                Items ({selectedYmd})
               </div>
-              <div className="text-xs text-white/80">C2A: rendering only (add/edit UI next)</div>
+              <div className="text-xs text-white/80">Events saved to ll-events</div>
             </div>
+
+            {showAdd && (
+              <div className="border-b border-slate-200 bg-slate-50 p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-700">Title *</label>
+                    <input
+                      value={form.title}
+                      onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                      placeholder="e.g. Concrete pour, Delivery, Site meeting"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">Linked Job</label>
+                    <select
+                      value={form.jobId}
+                      onChange={(e) => setForm((p) => ({ ...p, jobId: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">General (no job)</option>
+                      {siteOptions.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-end gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={form.allDay}
+                        onChange={(e) => setForm((p) => ({ ...p, allDay: e.target.checked }))}
+                      />
+                      All day
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">Start time</label>
+                    <input
+                      type="time"
+                      value={form.startTime}
+                      disabled={form.allDay}
+                      onChange={(e) => setForm((p) => ({ ...p, startTime: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">End time</label>
+                    <input
+                      type="time"
+                      value={form.endTime}
+                      disabled={form.allDay}
+                      onChange={(e) => setForm((p) => ({ ...p, endTime: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">Location</label>
+                    <input
+                      value={form.location}
+                      onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                      placeholder="Optional"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-700">Notes</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                      className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white min-h-[80px]"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+
+                {formErr ? (
+                  <div className="mt-3 text-sm text-rose-700 font-semibold">{formErr}</div>
+                ) : null}
+
+                <div className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAdd(false); setFormErr(''); }}
+                    className="px-3 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={addEvent}
+                    className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700"
+                  >
+                    Save Item
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 overflow-auto p-4 space-y-3">
               {selectedDateItems.length === 0 ? (
@@ -527,7 +732,7 @@ const Calendar = ({ sites, tasks }) => {
             <div className="mt-6 pt-4 border-t border-slate-200">
               <div className="text-sm font-semibold text-slate-700 mb-2">Next</div>
               <div className="text-sm text-slate-600">
-                C2B adds “Add Item” / edit / delete UI using this storage key: <code>ll-events</code>.
+                C2C adds edit/delete actions per item (still localStorage).
               </div>
             </div>
           </div>
