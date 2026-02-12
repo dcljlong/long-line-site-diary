@@ -93,6 +93,45 @@ function normalizeTasks(list) {
   return arr.map(normalizeTask);
 }
 
+function safeParseBackupMeta(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Invalid JSON file." };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, error: "Invalid backup format." };
+  }
+
+  const app = parsed.app;
+  const schemaVersion = parsed.schemaVersion;
+  const exportedAt = parsed.exportedAt;
+  const keyCount = Array.isArray(parsed.keys)
+    ? parsed.keys.length
+    : parsed.data && typeof parsed.data === "object"
+      ? Object.keys(parsed.data).length
+      : 0;
+
+  if (app !== "LongLineSiteDiary") {
+    return { ok: false, error: "Invalid backup source (not LongLineSiteDiary)." };
+  }
+
+  if (!schemaVersion) {
+    return { ok: false, error: "Backup missing schemaVersion." };
+  }
+
+  if (!parsed.data || typeof parsed.data !== "object") {
+    return { ok: false, error: "Backup missing data section." };
+  }
+
+  return {
+    ok: true,
+    meta: { app, schemaVersion, exportedAt, keyCount }
+  };
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState(() => getHashTab());
   const [selectedSiteId, setSelectedSiteId] = useState(null);
@@ -153,6 +192,26 @@ function App() {
       if (!file) return;
 
       const text = await file.text();
+
+      const meta = safeParseBackupMeta(text);
+      if (!meta.ok) {
+        alert(meta.error);
+        return;
+      }
+
+      const { schemaVersion, exportedAt, keyCount } = meta.meta;
+
+      const confirmText =
+        `IMPORT BACKUP (REPLACE MODE)\n\n` +
+        `This will ERASE current device data and replace it with the backup.\n\n` +
+        `Backup details:\n` +
+        `- Schema: ${schemaVersion}\n` +
+        `- Exported: ${exportedAt || "unknown"}\n` +
+        `- Keys: ${keyCount}\n\n` +
+        `Proceed?`;
+
+      const ok = window.confirm(confirmText);
+      if (!ok) return;
 
       try {
         importAppData(text, { mode: "replace" });
