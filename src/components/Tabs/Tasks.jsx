@@ -1,4 +1,5 @@
 ﻿import React, { useMemo, useState } from 'react';
+import { newId } from '../../utils/id';
 import { motion } from 'framer-motion';
 import { Plus, CheckCircle, Circle, Calendar, MapPin, Trash2, Edit2 } from 'lucide-react';
 import { taskCategories } from '../../data/initialData';
@@ -28,7 +29,7 @@ function normalizeTask(t) {
 
   return {
     ...safe,
-    id: safe.id || ('t' + Date.now() + Math.floor(Math.random() * 1000)),
+    id: safe.id || newId('t'),
     title: (safe.title || safe.name || '').toString(),
     category: (safe.category || 'urgent').toString(),
     priority: (safe.priority || 'medium').toString(),
@@ -73,7 +74,7 @@ const Tasks = ({ tasks, sites, onUpdateTasks }) => {
     const nowIso = new Date().toISOString();
     const task = normalizeTask({
       ...newTask,
-      id: 't' + Date.now(),
+      id: newId('t'),
       createdAt: nowIso,
       updatedAt: nowIso,
       siteId: newTask.jobId || '',
@@ -380,3 +381,4 @@ const Tasks = ({ tasks, sites, onUpdateTasks }) => {
 };
 
 export default Tasks;
+
