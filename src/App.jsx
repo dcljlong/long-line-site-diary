@@ -7,11 +7,12 @@ import Diary from "./components/Diary/Diary";
 import Calendar from "./components/Calendar/Calendar";
 import Tasks from "./components/Tabs/Tasks";
 import Documents from "./components/Tabs/Documents";
-import { useLocalStorage, exportData, importData } from "./hooks/useLocalStorage";
+import { useLocalStorage } from "./hooks/useLocalStorage";
 import { initialSites, initialTasks } from "./data/initialData";
 import { Download, Upload, Menu, ArrowLeft } from "lucide-react";
 import { saveSnapshot } from "./utils/snapshot";
 import { preflightMigrateLocalStorage } from "./schema/migrate";
+import { downloadBackupFile, importAppData } from "./utils/backup";
 
 preflightMigrateLocalStorage();
 
@@ -48,27 +49,26 @@ function titleFor(tab, selectedSiteId) {
 
 function normalizeTask(t) {
   const nowIso = new Date().toISOString();
-  const safe = t && typeof t === 'object' ? t : {};
+  const safe = t && typeof t === "object" ? t : {};
 
-  const id = (safe.id || '').toString() || ('t' + Date.now());
-  const title = (safe.title || '').toString();
+  const id = (safe.id || "").toString() || "t" + Date.now();
+  const title = (safe.title || "").toString();
 
-  const jobId = (safe.jobId || safe.siteId || '').toString();
+  const jobId = (safe.jobId || safe.siteId || "").toString();
 
-  const hasStatus = !!safe.status;
-  const statusRaw = (safe.status || '').toString().toLowerCase();
+  const statusRaw = (safe.status || "").toString().toLowerCase();
   const status =
-    statusRaw === 'planned' || statusRaw === 'active' || statusRaw === 'complete'
+    statusRaw === "planned" || statusRaw === "active" || statusRaw === "complete"
       ? statusRaw
-      : (status ? 'complete' : 'active');
+      : "active";
 
-  const startDate = safe.startDate ? safe.startDate : '';
-  const dueDate = safe.dueDate ? safe.dueDate : '';
+  const startDate = safe.startDate ? safe.startDate : "";
+  const dueDate = safe.dueDate ? safe.dueDate : "";
 
-  const category = (safe.category || 'urgent').toString();
-  const priority = (safe.priority || 'medium').toString();
+  const category = (safe.category || "urgent").toString();
+  const priority = (safe.priority || "medium").toString();
 
-  const scopeType = (safe.scopeType || 'other').toString();
+  const scopeType = (safe.scopeType || "other").toString();
 
   const createdAt = (safe.createdAt || nowIso).toString();
   const updatedAt = (safe.updatedAt || nowIso).toString();
@@ -84,7 +84,7 @@ function normalizeTask(t) {
     dueDate,
     scopeType,
     createdAt,
-    updatedAt
+    updatedAt,
   };
 }
 
@@ -92,6 +92,7 @@ function normalizeTasks(list) {
   const arr = Array.isArray(list) ? list : [];
   return arr.map(normalizeTask);
 }
+
 function App() {
   const [activeTab, setActiveTab] = useState(() => getHashTab());
   const [selectedSiteId, setSelectedSiteId] = useState(null);
@@ -103,7 +104,7 @@ function App() {
 
   const tasksNorm = useMemo(() => normalizeTasks(tasks), [tasks]);
 
-  useEffect(() =>  {
+  useEffect(() => {
     const onHash = () => {
       const next = getHashTab();
       setActiveTab(next);
@@ -139,13 +140,30 @@ function App() {
   };
 
   const handleExport = () => {
-    exportData({ sites, tasks: tasksNorm }, "long-line-backup");
+    downloadBackupFile();
   };
 
-  const handleImport = (data) => {
-    if (data.sites) setSites(data.sites);
-    if (data.tasks) setTasks(data.tasks);
-    alert("Data imported successfully!");
+  const handleImport = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+
+    input.onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const text = await file.text();
+
+      try {
+        importAppData(text, { mode: "replace" });
+        alert("Import complete. Reloading…");
+        window.location.reload();
+      } catch (err) {
+        alert(err?.message || "Import failed.");
+      }
+    };
+
+    input.click();
   };
 
   const goBack = () => {
@@ -210,9 +228,7 @@ function App() {
           <div className="p-4 md:p-6">
             <div className="bg-white rounded-xl shadow-md border border-black/10 p-4">
               <div className="text-lg font-semibold text-slate-800">Settings</div>
-              <div className="text-sm text-slate-600 mt-1">
-                Placeholder screen (wire real settings next).
-              </div>
+              <div className="text-sm text-slate-600 mt-1">Placeholder screen (wire real settings next).</div>
             </div>
           </div>
         );
@@ -270,7 +286,7 @@ function App() {
             <span className="hidden sm:inline">Export</span>
           </button>
           <button
-            onClick={() => importData(handleImport)}
+            onClick={handleImport}
             className="p-2 hover:bg-slate-700 rounded-lg transition-colors flex items-center gap-2 text-sm"
             title="Import Data"
           >
@@ -332,11 +348,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
-
-
-
-
